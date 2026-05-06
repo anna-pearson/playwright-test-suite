@@ -58,16 +58,16 @@ test('filters work correctly', async ({ page }) => {
   await page.locator('.todo-list li .toggle').last().click();
 
   // click "Active" filter
-  await page.locator('text=Active').click();
+  await page.getByRole('link', { name: 'Active' }).click();
   await expect(page.locator('.todo-list li')).toHaveCount(1);
   await expect(page.locator('.todo-list li')).toHaveText('Active task');
 
   // click "Completed" filter
-  await page.locator('text=Completed').click();
+  await page.getByRole('link', { name: 'Completed' }).click();
   await expect(page.locator('.todo-list li')).toHaveCount(1);
   await expect(page.locator('.todo-list li')).toHaveText('Done task');
 
   // click "All" filter
-  await page.locator('text=All').click();
+  await page.getByRole('link', { name: 'All' }).click();
   await expect(page.locator('.todo-list li')).toHaveCount(2);
 });
