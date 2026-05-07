@@ -7,11 +7,12 @@ export default defineConfig({
   // retry failed tests once in CI to handle flakiness
   retries: process.env.CI ? 1 : 0,
 
-  // generate an HTML report after each run
-  reporter: process.env.CI ? 'html' : 'list',
+  // always generate both: terminal output + HTML report
+  reporter: [['list'], ['html', { open: 'never' }]],
 
   use: {
     browserName: 'chromium',
+    baseURL: 'http://localhost:4173',
 
     // headless in CI (no screen), visible locally so you can watch
     headless: !!process.env.CI,
@@ -20,5 +21,11 @@ export default defineConfig({
 
     // capture a trace on first retry (helps debug failures in CI)
     trace: 'on-first-retry',
+  },
+
+  webServer: {
+    command: 'npx serve app -l 4173',
+    port: 4173,
+    reuseExistingServer: !process.env.CI,
   },
 });
