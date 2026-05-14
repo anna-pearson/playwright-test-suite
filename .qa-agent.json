@@ -1,12 +1,12 @@
 {
   "model": "claude-sonnet-4-6",
-  "reviewModel": "claude-haiku-4-5-20251001",
+  "reviewModel": "claude-sonnet-4-6",
   "files": [
     "app/app.js",
     "app/index.html",
-    "app/styles.css",
+    "server.js",
     "tests/dj-player.spec.ts",
-    "playwright.config.ts",
-    "package.json"
+    "tests/api.spec.ts",
+    "tests/network-interception.spec.ts"
   ]
 }

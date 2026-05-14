@@ -1,72 +1,6 @@
 // ── Track Data ──────────────────────────────────────────
-const TRACKS = [
-  {
-    id: 1,
-    title: 'Midnight Sessions',
-    artist: 'DJ Anna P',
-    bpm: 122,
-    genre: 'Deep House',
-    key: 'Am',
-    duration: 20,
-    freq: 220,
-    color: '#8b5cf6',
-  },
-  {
-    id: 2,
-    title: 'Warehouse Echoes',
-    artist: 'DJ Anna P',
-    bpm: 138,
-    genre: 'Techno',
-    key: 'Dm',
-    duration: 25,
-    freq: 150,
-    color: '#ef4444',
-  },
-  {
-    id: 3,
-    title: 'Liquid Sunshine',
-    artist: 'DJ Anna P',
-    bpm: 174,
-    genre: 'Drum & Bass',
-    key: 'Fm',
-    duration: 15,
-    freq: 110,
-    color: '#22c55e',
-  },
-  {
-    id: 4,
-    title: 'Cloud Nine',
-    artist: 'DJ Anna P',
-    bpm: 128,
-    genre: 'Progressive House',
-    key: 'Cm',
-    duration: 30,
-    freq: 330,
-    color: '#06b6d4',
-  },
-  {
-    id: 5,
-    title: 'Neon Dreams',
-    artist: 'DJ Anna P',
-    bpm: 110,
-    genre: 'Synthwave',
-    key: 'Em',
-    duration: 20,
-    freq: 440,
-    color: '#f59e0b',
-  },
-  {
-    id: 6,
-    title: 'Bass Culture',
-    artist: 'DJ Anna P',
-    bpm: 130,
-    genre: 'UK Garage',
-    key: 'Gm',
-    duration: 18,
-    freq: 185,
-    color: '#ec4899',
-  },
-];
+// Loaded from /api/tracks on init
+let TRACKS = [];
 
 // ── State ───────────────────────────────────────────────
 let currentTrackIndex = -1;
@@ -546,4 +480,13 @@ btnNext.addEventListener('click', nextTrack);
 btnPrev.addEventListener('click', prevTrack);
 
 // ── Init ────────────────────────────────────────────────
-renderTracklist(TRACKS);
+fetch('/api/tracks')
+  .then((res) => res.json())
+  .then((data) => {
+    TRACKS = data;
+    renderTracklist(TRACKS);
+  })
+  .catch(() => {
+    // API unavailable — render empty tracklist
+    renderTracklist([]);
+  });

@@ -1,5 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 
+// Reset server state before each test so API mutations don't leak between files
+test.beforeEach(async ({ request }) => {
+  await request.post('/api/tracks/reset');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Audio stub
 // Replaces HTMLAudioElement with a controllable fake so tests run headlessly
@@ -81,6 +86,7 @@ class DjPlayerPage {
   // ── Navigation ──────────────────────────────────────────────────────────
   async goto() {
     await this.page.goto('/');
+    await this.page.getByRole('listitem').first().waitFor();
   }
 
   // ── Now-playing panel ───────────────────────────────────────────────────
@@ -501,6 +507,11 @@ test.describe('Playback controls', () => {
     await player.goto();
 
     await player.clickTrack(0);
+    // Ensure currentTime is under 3s so Prev goes to previous track, not restart
+    await page.evaluate(() => {
+      const audio = document.querySelector('audio') as HTMLAudioElement | null;
+      if (audio) audio.currentTime = 0;
+    });
     await player.btnPrev.click();
 
     await expect(player.trackTitle).toHaveText('Bass Culture');
@@ -570,41 +581,60 @@ test.describe('Playback controls', () => {
 
     await expect(player.trackTitle).toHaveText('Liquid Sunshine');
   });
+
+  test('Previous restarts the current track if playback is past 3 seconds', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(2); // Liquid Sunshine
+    // Seek past the 3-second threshold using the stub instance
+    await page.evaluate(() => {
+      (window as any).__stubAudioInstance.currentTime = 5;
+    });
+    await player.btnPrev.click();
+
+    // Track should stay the same (restart, not go to previous)
+    await expect(player.trackTitle).toHaveText('Liquid Sunshine');
+    await expect(player.timeCurrent).toHaveText('0:00');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 5 · SEEKING
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Seeking', () => {
-  test('ArrowRight on the seek slider advances time by 5 s', async ({ page }) => {
+  test('ArrowRight seeks forward by 5 seconds', async ({ page }) => {
     await stubAudio(page);
     const player = new DjPlayerPage(page);
     await player.goto();
 
     await player.clickTrack(0);
-    await player.seekSlider.focus();
+    // Snapshot time just before seeking
+    const before = await page.evaluate(() => (window as any).__stubAudioInstance.currentTime);
     await page.keyboard.press('ArrowRight');
+    const after = await page.evaluate(() => (window as any).__stubAudioInstance.currentTime);
 
-    await expect(player.timeCurrent).not.toHaveText('0:00');
+    // ArrowRight adds 5s — allow small slack for the stub's interval
+    expect(after - before).toBeGreaterThanOrEqual(4.5);
+    expect(after - before).toBeLessThanOrEqual(6);
   });
 
-  test('ArrowLeft on the seek slider rewinds time by 5 s', async ({ page }) => {
+  test('ArrowLeft seeks backward by 5 seconds', async ({ page }) => {
     await stubAudio(page);
     const player = new DjPlayerPage(page);
     await player.goto();
 
     await player.clickTrack(0);
-
-    await player.seekSlider.focus();
-    // Move forward first so we have room to rewind
+    // Seek forward twice first so we have room to go back
     await page.keyboard.press('ArrowRight'); // +5
-    await page.keyboard.press('ArrowRight'); // +5 (now at 10s)
-    await page.keyboard.press('ArrowLeft');  // -5 (back to 5s)
+    await page.keyboard.press('ArrowRight'); // +5
+    const before = await page.evaluate(() => (window as any).__stubAudioInstance.currentTime);
+    await page.keyboard.press('ArrowLeft');  // -5
+    const after = await page.evaluate(() => (window as any).__stubAudioInstance.currentTime);
 
-    // Time should be non-zero and non-empty
-    const timeText = await player.timeCurrent.textContent();
-    expect(timeText).not.toBe('');
-    expect(timeText).not.toBe('0:00');
+    expect(before - after).toBeGreaterThanOrEqual(4.5);
+    expect(before - after).toBeLessThanOrEqual(6);
   });
 
   test('seek slider has correct aria attributes', async ({ page }) => {
@@ -614,6 +644,28 @@ test.describe('Seeking', () => {
     await expect(player.seekSlider).toHaveAttribute('aria-valuemin', '0');
     await expect(player.seekSlider).toHaveAttribute('aria-valuemax', '100');
     await expect(player.seekSlider).toHaveAttribute('aria-valuenow', '0');
+  });
+
+  test('clicking the progress bar seeks to that position', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0);
+    // Click the middle of the progress bar to seek to ~50%
+    const progressTrack = page.locator('.progress-track');
+    const box = await progressTrack.boundingBox();
+    if (!box) throw new Error('Progress bar not found');
+
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+    // Time should be roughly half the track duration (20s → ~10s)
+    await expect(player.timeCurrent).not.toHaveText('0:00');
+    const time = await player.timeCurrent.textContent();
+    const [min, sec] = time!.split(':').map(Number);
+    const totalSec = min * 60 + sec;
+    expect(totalSec).toBeGreaterThanOrEqual(8);
+    expect(totalSec).toBeLessThanOrEqual(12);
   });
 });
 
@@ -1057,24 +1109,17 @@ test.describe('Keyboard shortcuts', () => {
     await expect(player.volumeValue).toHaveText('0%');
   });
 
-  test('ArrowUp/ArrowDown do not fire in search input (native scroll only)', async ({ page }) => {
-    // This verifies our keyboard handler guards against the search field
+  test('ArrowUp/ArrowDown do not change volume when search input is focused', async ({ page }) => {
+    // The keyboard handler bails early when e.target === searchInput,
+    // so ArrowUp/Down are suppressed — volume stays unchanged.
     const player = new DjPlayerPage(page);
     await player.goto();
 
-    // Focus the search — the app's keydown handler bails early for search input
     await player.searchInput.focus();
-
-    // ArrowUp should not change volume because the global handler is suppressed
-    // when the search box has focus. The volume should stay at 80.
     await page.keyboard.press('ArrowUp');
-    // The handler checks `e.target === searchInput` only for Space, but
-    // ArrowUp/Down are not guarded — they WILL still change volume.
-    // We intentionally test what the app actually does here:
-    // The guard only covers Space, so volume CAN change from ArrowUp.
-    // (This is a known behaviour, not a bug we invented.)
-    const volText = await player.volumeValue.textContent();
-    expect(volText).toBeTruthy(); // Volume display still renders correctly
+
+    // Volume stays at 80% because the handler returned early
+    await expect(player.volumeValue).toHaveText('80%');
   });
 
   test('Shift+ArrowRight wraps around from last to first', async ({ page }) => {
@@ -1096,25 +1141,25 @@ test.describe('Accessibility', () => {
   test('"Now playing" section has an accessible region label', async ({ page }) => {
     const player = new DjPlayerPage(page);
     await player.goto();
-    await expect(player.nowPlayingSection).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Now playing' })).toBeVisible();
   });
 
   test('"Playback controls" section has an accessible region label', async ({ page }) => {
     const player = new DjPlayerPage(page);
     await player.goto();
-    await expect(player.transportSection).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Playback controls' })).toBeVisible();
   });
 
   test('"Track library" section has an accessible region label', async ({ page }) => {
     const player = new DjPlayerPage(page);
     await player.goto();
-    await expect(player.librarySection).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Track library' })).toBeVisible();
   });
 
   test('Genre filter group has an accessible label', async ({ page }) => {
     const player = new DjPlayerPage(page);
     await player.goto();
-    await expect(player.genreGroup).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Filter by genre' })).toBeVisible();
   });
 
   test('Seek progress bar has role="slider" and aria-label="Seek"', async ({ page }) => {
@@ -1249,18 +1294,14 @@ test.describe('Edge cases', () => {
     await expect(player.volumeValue).toHaveText('100%');
   });
 
-  test('search with only whitespace returns all tracks', async ({ page }) => {
+  test('search with only whitespace shows no tracks (whitespace is not trimmed)', async ({ page }) => {
     const player = new DjPlayerPage(page);
     await player.goto();
 
-    // Whitespace does not match any title/artist/genre/key so falls through
-    // to the "no query" path — all tracks visible
+    // The app does not trim search input — "   " is truthy so it tries to
+    // match, but no track title/artist/genre/key contains only spaces → 0 results
     await player.searchInput.fill('   ');
-    // The app lowercases and checks `!q` – "   ".toLowerCase() = "   " which
-    // is truthy, so it tries to match: no track contains only spaces → 0 or
-    // all depending on the trimming. We assert the count is stable (not an error).
-    const count = await player.trackItems.count();
-    expect(count).toBeGreaterThanOrEqual(0);
+    await expect(player.trackItems).toHaveCount(0);
   });
 
   test('rapidly switching genre filters does not crash the app', async ({ page }) => {
@@ -1342,5 +1383,64 @@ test.describe('Edge cases', () => {
     await expect(player.trackTitle).toHaveText('No track selected');
     // Search value should include the space
     await expect(player.searchInput).toHaveValue('liquid ');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 13 · VISUAL FEEDBACK
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Visual feedback', () => {
+  test('EQ bars appear on the active track while playing', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0);
+    // The active track's number column should show EQ bars while playing
+    const activeItem = page.locator('.tracklist-item.active');
+    await expect(activeItem.locator('.eq-bars')).toBeVisible();
+  });
+
+  test('EQ bars disappear when playback is paused', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0);
+    await expect(page.locator('.tracklist-item.active .eq-bars')).toBeVisible();
+
+    await player.btnPause.click();
+    // After pausing, the EQ bars should be replaced by the track number
+    await expect(page.locator('.tracklist-item.active .eq-bars')).toHaveCount(0);
+  });
+
+  test('EQ bars move to the new track when switching tracks', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0);
+    await expect(player.trackItem(0).locator('.eq-bars')).toBeVisible();
+
+    await player.clickTrack(2);
+    // EQ bars should now be on track 3, not track 1
+    await expect(player.trackItem(0).locator('.eq-bars')).toHaveCount(0);
+    await expect(player.trackItem(2).locator('.eq-bars')).toBeVisible();
+  });
+
+  test('volume persists when switching tracks', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    // Set volume to 40%
+    await player.volumeSlider.fill('40');
+    await expect(player.volumeValue).toHaveText('40%');
+
+    await player.clickTrack(0);
+    await player.clickTrack(2);
+
+    // Volume should still be 40% after switching tracks
+    await expect(player.volumeValue).toHaveText('40%');
   });
 });

@@ -24,7 +24,7 @@ export default defineConfig({
   },
 
   webServer: {
-    command: 'npx serve app -l 4173',
+    command: 'node server.js',
     port: 4173,
     reuseExistingServer: !process.env.CI,
   },
