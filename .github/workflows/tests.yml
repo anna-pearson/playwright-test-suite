@@ -47,13 +47,13 @@ jobs:
         # which fails the whole workflow,
         # which blocks the PR from merging
 
-      # Step 6: Upload test results if something failed
+      # Step 6: Always upload test report (pass or fail)
       - name: Upload test report
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: ${{ !cancelled() }}
         with:
           name: playwright-report
           path: playwright-report/
-          retention-days: 7
-        # this saves screenshots and traces from failed tests
-        # so you can debug without re-running locally
+          retention-days: 30
+        # saves the full HTML report, screenshots, and traces
+        # available as a downloadable artifact on the Actions tab
