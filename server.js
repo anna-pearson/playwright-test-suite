@@ -70,6 +70,30 @@ app.post('/api/tracks', (req, res) => {
   res.status(201).json(track);
 });
 
+// Update a track
+app.put('/api/tracks/:id', (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid track ID' });
+
+  const track = tracks.find(t => t.id === id);
+  if (!track) return res.status(404).json({ error: 'Track not found' });
+
+  const { title, artist, bpm, genre, key, duration, freq, color } = req.body;
+  if (title !== undefined && !title) return res.status(400).json({ error: 'Title cannot be empty' });
+  if (artist !== undefined && !artist) return res.status(400).json({ error: 'Artist cannot be empty' });
+
+  if (title !== undefined) track.title = title;
+  if (artist !== undefined) track.artist = artist;
+  if (bpm !== undefined) track.bpm = bpm;
+  if (genre !== undefined) track.genre = genre;
+  if (key !== undefined) track.key = key;
+  if (duration !== undefined) track.duration = duration;
+  if (freq !== undefined) track.freq = freq;
+  if (color !== undefined) track.color = color;
+
+  res.json(track);
+});
+
 // Delete a track
 app.delete('/api/tracks/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);

@@ -274,6 +274,111 @@ test.describe('POST /api/tracks', () => {
   });
 });
 
+test.describe('PUT /api/tracks/:id', () => {
+  test('updates a track title and returns the updated track', async ({ request }) => {
+    const response = await request.put('/api/tracks/1', {
+      data: { title: 'Updated Title' },
+    });
+    const track = await response.json();
+
+    expect(response.status()).toBe(200);
+    expect(track.id).toBe(1);
+    expect(track.title).toBe('Updated Title');
+    // Other fields should remain unchanged
+    expect(track.artist).toBe('DJ Anna P');
+    expect(track.bpm).toBe(122);
+  });
+
+  test('updates multiple fields at once', async ({ request }) => {
+    const response = await request.put('/api/tracks/2', {
+      data: { title: 'New Name', bpm: 150, genre: 'Ambient' },
+    });
+    const track = await response.json();
+
+    expect(track.title).toBe('New Name');
+    expect(track.bpm).toBe(150);
+    expect(track.genre).toBe('Ambient');
+    // Unchanged fields stay the same
+    expect(track.artist).toBe('DJ Anna P');
+    expect(track.key).toBe('Dm');
+  });
+
+  test('updated track persists in GET /api/tracks', async ({ request }) => {
+    await request.put('/api/tracks/1', {
+      data: { title: 'Persisted Change' },
+    });
+
+    const response = await request.get('/api/tracks/1');
+    const track = await response.json();
+
+    expect(track.title).toBe('Persisted Change');
+  });
+
+  test('updated track appears in filtered results', async ({ request }) => {
+    // Change track 1's genre from Deep House to Techno
+    await request.put('/api/tracks/1', {
+      data: { genre: 'Techno' },
+    });
+
+    const response = await request.get('/api/tracks?genre=Techno');
+    const tracks = await response.json();
+
+    // Now both track 1 and track 2 are Techno
+    expect(tracks).toHaveLength(2);
+  });
+
+  test('returns 404 for nonexistent track', async ({ request }) => {
+    const response = await request.put('/api/tracks/999', {
+      data: { title: 'Ghost' },
+      failOnStatusCode: false,
+    });
+
+    expect(response.status()).toBe(404);
+  });
+
+  test('returns 400 for non-numeric ID', async ({ request }) => {
+    const response = await request.put('/api/tracks/abc', {
+      data: { title: 'Bad ID' },
+      failOnStatusCode: false,
+    });
+
+    expect(response.status()).toBe(400);
+  });
+
+  test('rejects empty string as title', async ({ request }) => {
+    const response = await request.put('/api/tracks/1', {
+      data: { title: '' },
+      failOnStatusCode: false,
+    });
+
+    expect(response.status()).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain('Title');
+  });
+
+  test('rejects empty string as artist', async ({ request }) => {
+    const response = await request.put('/api/tracks/1', {
+      data: { artist: '' },
+      failOnStatusCode: false,
+    });
+
+    expect(response.status()).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain('Artist');
+  });
+
+  test('does not change ID even if included in body', async ({ request }) => {
+    const response = await request.put('/api/tracks/1', {
+      data: { id: 999, title: 'ID Hijack' },
+    });
+    const track = await response.json();
+
+    // ID should still be 1, not 999
+    expect(track.id).toBe(1);
+    expect(track.title).toBe('ID Hijack');
+  });
+});
+
 test.describe('DELETE /api/tracks/:id', () => {
   test('deletes an existing track and returns 204', async ({ request }) => {
     const response = await request.delete('/api/tracks/1');
@@ -432,5 +537,86 @@ test.describe('DELETE then re-check IDs', () => {
     const track = await response.json();
 
     expect(track.id).toBe(7);
+  });
+});
+
+test.describe('Search edge cases', () => {
+  test('search with special characters returns empty (no crash)', async ({ request }) => {
+    const response = await request.get('/api/tracks?search=%3Cscript%3E');
+    const tracks = await response.json();
+
+    expect(response.status()).toBe(200);
+    expect(tracks).toHaveLength(0);
+  });
+
+  test('search with single character matches', async ({ request }) => {
+    // "e" appears in almost every track title/artist/genre
+    const response = await request.get('/api/tracks?search=e');
+    const tracks = await response.json();
+
+    expect(response.status()).toBe(200);
+    expect(tracks.length).toBeGreaterThan(0);
+  });
+
+  test('search with URL-encoded spaces works', async ({ request }) => {
+    const response = await request.get('/api/tracks?search=cloud%20nine');
+    const tracks = await response.json();
+
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].title).toBe('Cloud Nine');
+  });
+});
+
+test.describe('Full CRUD lifecycle', () => {
+  test('create → read → update → delete a track', async ({ request }) => {
+    // Create
+    const createRes = await request.post('/api/tracks', {
+      data: { title: 'Lifecycle Track', artist: 'CRUD Test', bpm: 140, genre: 'Trance' },
+    });
+    expect(createRes.status()).toBe(201);
+    const created = await createRes.json();
+    const id = created.id;
+
+    // Read
+    const readRes = await request.get(`/api/tracks/${id}`);
+    expect(readRes.status()).toBe(200);
+    const fetched = await readRes.json();
+    expect(fetched.title).toBe('Lifecycle Track');
+
+    // Update
+    const updateRes = await request.put(`/api/tracks/${id}`, {
+      data: { title: 'Updated Lifecycle', bpm: 160 },
+    });
+    expect(updateRes.status()).toBe(200);
+    const updated = await updateRes.json();
+    expect(updated.title).toBe('Updated Lifecycle');
+    expect(updated.bpm).toBe(160);
+    expect(updated.artist).toBe('CRUD Test'); // unchanged
+
+    // Delete
+    const deleteRes = await request.delete(`/api/tracks/${id}`);
+    expect(deleteRes.status()).toBe(204);
+
+    // Verify gone
+    const goneRes = await request.get(`/api/tracks/${id}`, {
+      failOnStatusCode: false,
+    });
+    expect(goneRes.status()).toBe(404);
+  });
+});
+
+test.describe('HEAD requests', () => {
+  test('HEAD /api/tracks returns headers without body', async ({ request }) => {
+    const response = await request.head('/api/tracks');
+
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('application/json');
+  });
+
+  test('HEAD / returns HTML content-type', async ({ request }) => {
+    const response = await request.head('/');
+
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('text/html');
   });
 });
