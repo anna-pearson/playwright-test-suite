@@ -7,6 +7,9 @@ import { test, expect } from '@playwright/test';
 // handling, status codes, and response schemas.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// API tests share in-memory server state, so run them serially to avoid races
+test.describe.configure({ mode: 'serial' });
+
 // Reset server state before each test so mutations don't leak between tests
 test.beforeEach(async ({ request }) => {
   await request.post('/api/tracks/reset');

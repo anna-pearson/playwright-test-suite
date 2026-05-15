@@ -36,7 +36,7 @@ jobs:
 
       # Step 4: Install Playwright browsers
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium firefox webkit
         # --with-deps also installs system-level dependencies
         # (fonts, libraries) that the browser needs on Linux
 
