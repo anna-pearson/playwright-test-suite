@@ -1,6 +1,8 @@
 # DJ Mix Player — Playwright Test Suite
 
-A comprehensive Playwright test suite for a browser-based DJ mix player. 116 tests across 11 categories covering functionality, accessibility, keyboard navigation, and edge cases.
+[![Playwright Tests](https://github.com/anna-pearson/playwright-test-suite/actions/workflows/tests.yml/badge.svg)](https://github.com/anna-pearson/playwright-test-suite/actions/workflows/tests.yml)
+
+A comprehensive Playwright test suite for a browser-based DJ mix player. 200 tests across 13 categories covering functionality, accessibility, keyboard navigation, network interception, API testing, and edge cases.
 
 ## The app
 
@@ -29,6 +31,8 @@ A single-page DJ player built with vanilla HTML/CSS/JS. Features include:
 | Genre filters | 9 | Single filter, combined with search, active state |
 | Keyboard shortcuts | 16 | All shortcuts, focus guards, case-insensitive |
 | Accessibility | 17 | ARIA labels, roles, keyboard nav, focus management, regions |
+| Network interception | 8 | Route blocking, response modification, slow connections, asset verification |
+| API testing | 10 | Status codes, content types, 404 handling, HEAD requests, concurrency |
 | Edge cases | 6 | Rapid clicks, boundary conditions, viewport sizes |
 
 ## Key patterns
@@ -73,6 +77,31 @@ for (const { label, expectedTitle } of genreScenarios) {
     // Same test logic, different data
   });
 }
+```
+
+### Network interception
+
+Uses `page.route()` to intercept, block, and modify network requests at the browser level — testing how the app handles degraded or unexpected network conditions:
+
+```typescript
+test('app loads successfully when CSS is blocked', async ({ page }) => {
+  await page.route('**/styles.css', (route) => route.abort());
+  await page.goto('/');
+  // App should still render content without styles
+  await expect(page.getByRole('listitem')).toHaveCount(6);
+});
+```
+
+### API testing
+
+Uses Playwright's `request` fixture to test server endpoints directly at the HTTP level — no browser needed:
+
+```typescript
+test('GET /app.js returns 200 with JavaScript content', async ({ request }) => {
+  const response = await request.get('/app.js');
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toContain('javascript');
+});
 ```
 
 ## Running tests
