@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 // Reset server state before each test so API mutations don't leak between files
 test.beforeEach(async ({ request }) => {
@@ -1245,6 +1246,33 @@ test.describe('Accessibility', () => {
     const player = new DjPlayerPage(page);
     await player.goto();
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  });
+
+  test('axe scan: page has no critical accessibility violations', async ({ page }) => {
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(results.violations.filter(v => v.impact === 'critical')).toHaveLength(0);
+  });
+
+  test('axe scan: page has no serious accessibility violations', async ({ page }) => {
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(results.violations.filter(v => v.impact === 'serious')).toHaveLength(0);
+  });
+
+  test('axe scan: full WCAG 2.1 AA compliance check', async ({ page }) => {
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    const results = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+      .analyze();
+
+    expect(results.violations).toHaveLength(0);
   });
 });
 

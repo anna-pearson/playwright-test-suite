@@ -14,7 +14,7 @@
   --bg-hover: #22223a;
   --text-primary: #e8e8f0;
   --text-secondary: #8888a8;
-  --text-dim: #55557a;
+  --text-dim: #8585a8;
   --accent: #8b5cf6;
   --accent-glow: rgba(139, 92, 246, 0.3);
   --accent-secondary: #06b6d4;
@@ -353,8 +353,8 @@ body {
 }
 
 .genre-btn.active {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: #7c4fe0;
+  border-color: #7c4fe0;
   color: #fff;
 }
 
